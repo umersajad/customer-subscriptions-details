@@ -14,10 +14,10 @@ app.use(cors());
 app.get("/get_subscriptions", async (req, res) => {
   let subscriptions = [];
   let customers = {};
-  let productIdsAgainstSubscriptions = {};
+  let productNamesAgainstSubscriptions = {};
 
   for await (const subscription of stripe.subscriptions.list({
-    expand: ["data.customer"],
+    expand: ["data.customer", "data.plan.product"],
     limit: 100,
   })) {
     subscriptions.push(subscription);
@@ -41,22 +41,23 @@ app.get("/get_subscriptions", async (req, res) => {
             },
           },
           products_details: {
-            product_id: subscription.plan.product,
+            product_id: subscription.plan.product.id,
+            product_name: subscription.plan.product.name,
             product_amount: subscription.plan.amount,
             metadata: subscription.metadata ?? {},
           },
         };
 
         if (customers[subscription.customer.id]) {
-          productIdsAgainstSubscriptions[subscription.customer.id].push(
-            subscription.plan.product
+          productNamesAgainstSubscriptions[subscription.customer.id].push(
+            subscription.plan.product.name
           );
           customers[subscription.customer.id].subscriptions.push(subData);
           customers[subscription.customer.id].subscription_length =
             customers[subscription.customer.id].subscriptions.length;
         } else {
-          productIdsAgainstSubscriptions[subscription.customer.id] = [
-            subscription.plan.product,
+          productNamesAgainstSubscriptions[subscription.customer.id] = [
+            subscription.plan.product.name,
           ];
           customers[subscription.customer.id] = {
             subscription_length: 1,
@@ -72,8 +73,8 @@ app.get("/get_subscriptions", async (req, res) => {
     });
 
     let response = Object.values(customers).map((res) => ({
-      multipleProductIdsAgainstSameSubscription: getMultiple(
-        productIdsAgainstSubscriptions[res.customer_details.customer_id]
+      multipleProductNamesAgainstSameSubscription: getMultiple(
+        productNamesAgainstSubscriptions[res.customer_details.customer_id]
       ),
       ...res,
     }));
@@ -112,10 +113,12 @@ function timeConverter(UNIX_timestamp) {
   return time;
 }
 function getMultiple(arr) {
-  let multiples = arr.filter((value, index) => arr.indexOf(value) !== index);
+  let multiples = arr.filter((item, index) => {
+    return arr.indexOf(item) === index && arr.lastIndexOf(item) !== index;
+  });
   return {
     status: multiples.length > 0,
-    product_ids: multiples,
+    product_names: multiples,
   };
 }
 
